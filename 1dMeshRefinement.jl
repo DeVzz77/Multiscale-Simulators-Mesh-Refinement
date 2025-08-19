@@ -14,7 +14,7 @@ using SparseArrays
 D = 1
 
 NumDegreesofFreedom = 300
-polyDegree = 1
+polyDegree = 3
 numElements = Int(NumDegreesofFreedom/polyDegree)
 bound = pi
 sc = 1/sqrt(bound/2)
@@ -26,8 +26,8 @@ cell_coords = get_cell_coordinates(model)
 Ω = Triangulation(model)
 dΩ = Measure(Ω, 2*polyDegree + 2)
 
-testspaces = Gridap.FESpaces.SingleFieldFESpace[]
-trialspaces = Gridap.FESpaces.SingleFieldFESpace[]
+# testspaces = Gridap.FESpaces.SingleFieldFESpace[]
+# trialspaces = Gridap.FESpaces.SingleFieldFESpace[]
 
 function GenSpacesWithPRefinement(model, polyDegree)
 
@@ -40,7 +40,24 @@ function GenSpacesWithPRefinement(model, polyDegree)
     return Vhhh, Uhhh
 end
 
-numSpaces = 3
+
+function getTestSpaces(model, polyDegree)
+    #finite element definition
+    reffe = ReferenceFE(lagrangian, Float64, polyDegree)
+    #Test Space
+    Vh = TestFESpace(model,reffe,dirichlet_tags="boundary")
+    return Vh
+end
+
+function getTrialSpaceElement(TestSpace)
+    Uh = TrialFESpace(TestSpace,0)
+    return Uh
+end
+
+testspaces = [getTestSpaces(model, 1), getTestSpaces(model, 2), getTestSpaces(model, 3), getTestSpaces(model, 4), getTestSpaces(model, 4)]
+trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2]), getTrialSpaceElement(testspaces[3]), getTrialSpaceElement(testspaces[4])]
+
+numSpaces = 4
 function GenMultipleSpaces(model, numSpaces)
     for poly in numSpaces
         #finite element definition
@@ -56,6 +73,8 @@ function GenMultipleSpaces(model, numSpaces)
 end
 
 
+
+
 # initialise SLEPC
 
 SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian ")
@@ -65,8 +84,8 @@ coarseP = 1
 fineP = 3
 
     
-VhCoarse, UhCoarse = GenSpacesWithPRefinement(model, coarseP)
-VhFine, UhFine = GenSpacesWithPRefinement(model, fineP)
+# VhCoarse, UhCoarse = GenSpacesWithPRefinement(model, coarseP)
+# VhFine, UhFine = GenSpacesWithPRefinement(model, fineP)
 
 
 
@@ -74,8 +93,8 @@ VhFine, UhFine = GenSpacesWithPRefinement(model, fineP)
 # Uh = MultiFieldFESpace([UhCoarse,UhFine])
 
 
-GenMultipleSpaces(model, numSpaces)
-Vh = MultiFieldFESpace( testspaces)
+# GenMultipleSpaces(model, numSpaces)
+Vh = MultiFieldFESpace(testspaces)
 Uh = MultiFieldFESpace(trialspaces)
 
 display(Vh[2])
@@ -109,6 +128,9 @@ refinementH1 = Vector{Vector{Float64}}()
 errorCoarse = Vector{Float64}()
 errvecsL2Coarse = Vector{Float64}()
 errvecsH1Coarse = Vector{Float64}()
+
+diffPlot1 = plot(xscale = :log10, yscale = :log10)
+diffPlot2 = plot()
 
 #provide solutions and calculate errors for each defined space
 for i in numSpaces
@@ -245,44 +267,72 @@ for i in numSpaces
 
     # Plotting the errors in eigenvalues and eigenvectors
     errvals = abs.(eigenValues - evals)./evals
+    #display(errvals)
     if i == 1 
         push!(errorCoarse, errvals)
+        display(errorCoarse)
         push!(errvecsL2Coarse, errvecsL2)
         push!(errvecsH1Coarse, errvecsH1)
-    end
-    #Store errors for each refinement
-    push!(errorRefine,errvals)
-    push!(refinementL2,errvecsL2)
-    push!(refinementH1,errvecsH1)
+                #Store errors for each refinement
+        push!(errorRefine,errvals)
+        push!(refinementL2,errvecsL2)
+        push!(refinementH1,errvecsH1)
 
-    
+
+        eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
+        plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
+        plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
+        plot!(eigErrorPlot; legend=:bottomright)
+        png(eigErrorPlot, "ErrorsLog.png")
+        eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
+        plot!(errvecsL2, label="Eigenvector error (L2 norm)")
+        plot!(errvecsH1, label="Eigenvector error (H1 norm)")
+        png(eigErrorPlot2, "ErrorsCoarse.png")
+
+
+
+    else
+        #Store errors for each refinement
+        push!(errorRefine,errvals)
+        push!(refinementL2,errvecsL2)
+        push!(refinementH1,errvecsH1)
+
+        display(errorRefine[i])
+
+        errvalsDiff = errorRefine[1] - errvals
+        L2Diff = refinementL2[1] - errvecsL2
+        H1Diff = refinementH1[1] - errvecsH1
+        plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+        plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+        plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
+        
+        plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+        plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+        plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
+
+    end
     
     println("errvecsL2")
     display(errvecsL2)
     println("errvecsH1")
     display(errvecsH1)
 
-
+#Clean up, free memory
+    MatDestroy(petA)
+    MatDestroy(petM)
+    EPSDestroy(eps)
+    SlepcFinalize()
 
 
 # println("errvals")
 # println(errvals)
 end 
-eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
-plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
-plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
-plot!(eigErrorPlot; legend=:bottomright)
-png(eigErrorPlot, "plot1.png")
-eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
-plot!(errvecsL2, label="Eigenvector error (L2 norm)")
-plot!(errvecsH1, label="Eigenvector error (H1 norm)")
-png(eigErrorPlot2, "plot2.png")
+
+png(diffPlot1, "diffplot1.png")
+png(diffPlot2, "diffplot2.png")
+
 
  
-#Clean up, free memory
-MatDestroy(petA)
-MatDestroy(petM)
-EPSDestroy(eps)
-SlepcFinalize()
+
 
 
