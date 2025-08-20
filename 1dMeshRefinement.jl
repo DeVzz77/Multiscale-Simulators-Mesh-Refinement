@@ -54,10 +54,10 @@ function getTrialSpaceElement(TestSpace)
     return Uh
 end
 
-testspaces = [getTestSpaces(model, 1), getTestSpaces(model, 2), getTestSpaces(model, 3), getTestSpaces(model, 4), getTestSpaces(model, 4)]
+testspaces = [getTestSpaces(model, 1), getTestSpaces(model, 2), getTestSpaces(model, 3), getTestSpaces(model, 4)]
 trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2]), getTrialSpaceElement(testspaces[3]), getTrialSpaceElement(testspaces[4])]
 
-numSpaces = 4
+numSpaces = [1,2,3,4]
 function GenMultipleSpaces(model, numSpaces)
     for poly in numSpaces
         #finite element definition
@@ -125,9 +125,9 @@ integ(xh,yh,dΩ) = ∫(xh*yh)*dΩ
 errorRefine = Vector{Vector{Float64}}()
 refinementL2 = Vector{Vector{Float64}}()
 refinementH1 = Vector{Vector{Float64}}()
-errorCoarse = Vector{Float64}()
-errvecsL2Coarse = Vector{Float64}()
-errvecsH1Coarse = Vector{Float64}()
+errorCoarse = Vector{Vector{Float64}}()
+errvecsL2Coarse = Vector{Vector{Float64}}()
+errvecsH1Coarse = Vector{Vector{Float64}}()
 
 diffPlot1 = plot(xscale = :log10, yscale = :log10)
 diffPlot2 = plot()
@@ -267,6 +267,9 @@ for i in numSpaces
 
     # Plotting the errors in eigenvalues and eigenvectors
     errvals = abs.(eigenValues - evals)./evals
+    push!(errorRefine,errvals)
+    push!(refinementL2,errvecsL2)
+    push!(refinementH1,errvecsH1)
     #display(errvals)
     if i == 1 
         push!(errorCoarse, errvals)
@@ -297,11 +300,11 @@ for i in numSpaces
         push!(refinementL2,errvecsL2)
         push!(refinementH1,errvecsH1)
 
-        display(errorRefine[i])
+        display(errorRefine[1])
 
-        errvalsDiff = errorRefine[1] - errvals
-        L2Diff = refinementL2[1] - errvecsL2
-        H1Diff = refinementH1[1] - errvecsH1
+        errvalsDiff = errorRefine[1] .- errorRefine[i]
+        L2Diff = refinementL2[1] .- refinementL2[i]
+        H1Diff = refinementH1[1] .- errvecsH1[i]
         plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
         plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
         plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
@@ -317,22 +320,36 @@ for i in numSpaces
     println("errvecsH1")
     display(errvecsH1)
 
-#Clean up, free memory
+    #Clean up, free memory
     MatDestroy(petA)
     MatDestroy(petM)
     EPSDestroy(eps)
-    SlepcFinalize()
+
 
 
 # println("errvals")
 # println(errvals)
 end 
 
+display(errorRefine)
+display(refinementL2)
+display(refinementH1)
+
+    #     errvalsDiff = errorRefine[1] - errvals
+    #     L2Diff = refinementL2[1] - errvecsL2
+    #     H1Diff = refinementH1[1] - errvecsH1
+    #     plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+    #     plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+    #     plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
+        
+    #     plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+    #     plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+    #     plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
+
 png(diffPlot1, "diffplot1.png")
 png(diffPlot2, "diffplot2.png")
 
-
- 
+SlepcFinalize()
 
 
 
