@@ -14,7 +14,7 @@ SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian
 # -eps_problem_type ghep -st_type sinvert
 D = 1 
 NumDegreesofFreedom = 300
-polyDegree = 1
+polyDegree = 4
 numElements = Int(NumDegreesofFreedom/polyDegree) 
 bound = pi
 

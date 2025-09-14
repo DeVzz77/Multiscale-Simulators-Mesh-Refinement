@@ -14,17 +14,22 @@ using SparseArrays
 D = 1
 
 NumDegreesofFreedom = 300
-polyDegree = 3
-numElements = Int(NumDegreesofFreedom/polyDegree)
 bound = pi
 sc = 1/sqrt(bound/2)
-domain = (0,bound)
+domain = (0,bound, 0,bound)
 
-model = CartesianDiscreteModel(domain, numElements)
-cell_coords = get_cell_coordinates(model)
+#definitely a better way to do this 
+polyDegree = [1,2,3,4]
+numElements = [Int(NumDegreesofFreedom/polyDegree[1]), Int(NumDegreesofFreedom/polyDegree[2]), Int(NumDegreesofFreedom/polyDegree[3]), Int(NumDegreesofFreedom/polyDegree[4])]
 
-Ω = Triangulation(model)
-dΩ = Measure(Ω, 2*polyDegree + 2)
+
+model = [CartesianDiscreteModel(domain, numElements[1]), CartesianDiscreteModel(domain, numElements[2]), CartesianDiscreteModel(domain, numElements[3]), CartesianDiscreteModel(domain, numElements[4])]
+cell_coords = [get_cell_coordinates(model[1]), get_cell_coordinates(model[2]), get_cell_coordinates(model[3]), get_cell_coordinates(model[4])]
+
+Ω = [Triangulation(model[1]),Triangulation(model[2]),Triangulation(model[3]),Triangulation(model[4])]
+dΩ = [Measure(Ω[1], 2*polyDegree[1] + 2), Measure(Ω[2], 2*polyDegree[2] + 2), Measure(Ω[3], 2*polyDegree[3] + 2), Measure(Ω[4], 2*polyDegree[4] + 2)]
+
+
 
 # testspaces = Gridap.FESpaces.SingleFieldFESpace[]
 # trialspaces = Gridap.FESpaces.SingleFieldFESpace[]
@@ -54,7 +59,7 @@ function getTrialSpaceElement(TestSpace)
     return Uh
 end
 
-testspaces = [getTestSpaces(model, 1), getTestSpaces(model, 2), getTestSpaces(model, 3), getTestSpaces(model, 4)]
+testspaces = [getTestSpaces(model[1], 1), getTestSpaces(model[2], 2), getTestSpaces(model[3], 3), getTestSpaces(model[4], 4)]
 trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2]), getTrialSpaceElement(testspaces[3]), getTrialSpaceElement(testspaces[4])]
 
 numSpaces = [1,2,3,4]
@@ -104,11 +109,6 @@ display(Vh)
 # display(trialList)
 
 
-#Bilinear form of stiffness matrix
-a(u,v) = ∫(∇(u)⋅∇(v))dΩ
-#Bilinear form of mass matrix
-m(u,v) = ∫(u*v)dΩ
-
 
 
 
@@ -120,6 +120,9 @@ ENorm(xh,dΩ) = ∫(∇(xh)⋅∇(xh))*dΩ
 
 # Inner product over domain
 integ(xh,yh,dΩ) = ∫(xh*yh)*dΩ
+
+
+
 
 
 errorRefine = Vector{Vector{Float64}}()
@@ -134,6 +137,10 @@ diffPlot2 = plot()
 
 #provide solutions and calculate errors for each defined space
 for i in numSpaces
+    #Bilinear form of stiffness matrix
+    a(u,v) = ∫(∇(u)⋅∇(v))dΩ[i]
+    # #Bilinear form of mass matrix
+    m(u,v) = ∫(u*v)dΩ[i]
 
 
     A = assemble_matrix(a, Uh[i], Vh[i])
@@ -252,15 +259,25 @@ for i in numSpaces
         ev_exact(x) = sc*sin(l*x[1])  # Exact eigenfunction
         # println("EV_EXACT(X)")
         # println(ev_exact(l))
-        sn=sum(integ(ev_exact,evh,dΩ))
+        sn=sum(integ(ev_exact,evh,dΩ[1]))
         # println("SN")
         # println(sn)
         error = ev_exact - evh*sign(sn) # Compute the error
         # display(error)
-        errvecsL2[l] = sum(L2Norm(error,dΩ))
-        errvecsH1[l] = sum(ENorm(error,dΩ))/evals[l] # Normalize by the eigenvalue
+        errvecsL2[l] = sum(L2Norm(error,dΩ[1]))
+        errvecsH1[l] = sum(ENorm(error,dΩ[1]))/evals[l] # Normalize by the eigenvalue
 
 
+        # write to vtk
+        name = "Eigenvector$(D)D$(l)_MeshRefinementP"
+        writevtk(
+              Ω,name,append=true,
+                cellfields = [
+                "evh" => evh,                           # Computed solution
+                "evx" => CellField(ev_exact,Ω[1]),        # Exact solution
+                "error" => CellField(error,Ω[1]),          # Exact solution
+                ],
+                )
         
     end
 
@@ -271,6 +288,10 @@ for i in numSpaces
     push!(refinementL2,errvecsL2)
     push!(refinementH1,errvecsH1)
     #display(errvals)
+
+
+
+
     if i == 1 
         push!(errorCoarse, errvals)
         display(errorCoarse)
@@ -281,16 +302,15 @@ for i in numSpaces
         push!(refinementL2,errvecsL2)
         push!(refinementH1,errvecsH1)
 
-
         eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
         plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
         plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
         plot!(eigErrorPlot; legend=:bottomright)
-        png(eigErrorPlot, "ErrorsLog.png")
+
         eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
         plot!(errvecsL2, label="Eigenvector error (L2 norm)")
         plot!(errvecsH1, label="Eigenvector error (H1 norm)")
-        png(eigErrorPlot2, "ErrorsCoarse.png")
+        
 
 
 
@@ -314,6 +334,7 @@ for i in numSpaces
         plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
 
     end
+
     
     println("errvecsL2")
     display(errvecsL2)
@@ -331,6 +352,51 @@ for i in numSpaces
 # println(errvals)
 end 
 
+
+#Plot all errorvals and errorvecs on same graphs
+
+eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
+for i in numSpaces
+    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
+    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
+end
+png(eigErrorPlot, "ErrorsLog_P_refinement.png")
+
+
+eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
+for i in numSpaces
+    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
+    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
+end 
+png(eigErrorPlot2, "Errors_P_Refinement.png")
+
+
+#Plot on different graphs
+
+for i in numSpaces
+    eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
+    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
+    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
+    png(eigErrorPlot, "ErrorsLog_P_refinement=$(i).png")
+end
+
+
+
+
+for i in numSpaces
+    eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
+    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
+    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
+    png(eigErrorPlot2, "Errors_P_Refinement=$(i).png")
+end 
+
+
+
+
 display(errorRefine)
 display(refinementL2)
 display(refinementH1)
@@ -346,6 +412,9 @@ display(refinementH1)
     #     plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
     #     plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
 
+# export plots to pngs
+png(eigErrorPlot, "ErrorsLog.png")
+png(eigErrorPlot2, "ErrorsCoarse.png")
 png(diffPlot1, "diffplot1.png")
 png(diffPlot2, "diffplot2.png")
 
