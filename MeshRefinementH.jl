@@ -5,6 +5,7 @@ using Plots
 using PetscWrap
 using SlepcWrap
 using SparseArrays
+using Gridap.Adaptivity
 
 
 
@@ -19,15 +20,18 @@ sc = 1/sqrt(bound/2)
 domain = (0,bound, 0,bound)
 
 #definitely a better way to do this 
-polyDegree = [1,2,3,4]
-numElements = [Int(NumDegreesofFreedom/polyDegree[1]), Int(NumDegreesofFreedom/polyDegree[2]), Int(NumDegreesofFreedom/polyDegree[3]), Int(NumDegreesofFreedom/polyDegree[4])]
+polyDegree = 2
+numElements = Int(NumDegreesofFreedom/polyDegree)
 
+model = CartesianDiscreteModel(domain, numElements)
+cell_coords = get_cell_coordinates(model)
 
-model = [CartesianDiscreteModel(domain, numElements[1]), CartesianDiscreteModel(domain, numElements[2]), CartesianDiscreteModel(domain, numElements[3]), CartesianDiscreteModel(domain, numElements[4])]
-cell_coords = [get_cell_coordinates(model[1]), get_cell_coordinates(model[2]), get_cell_coordinates(model[3]), get_cell_coordinates(model[4])]
+hrefinedModel = refine(model)
+refined_cell_coords = get_cell_coordinates(hrefinedModel)
 
-Ω = [Triangulation(model[1]),Triangulation(model[2]),Triangulation(model[3]),Triangulation(model[4])]
-dΩ = [Measure(Ω[1], 2*polyDegree[1] + 2), Measure(Ω[2], 2*polyDegree[2] + 2), Measure(Ω[3], 2*polyDegree[3] + 2), Measure(Ω[4], 2*polyDegree[4] + 2)]
+Ω = [Triangulation(model), Triangulation(hrefinedModel)]
+dΩ = [Measure(Ω[1], 2*polyDegree + 2), Measure(Ω[2], 2*polyDegree + 2)]
+
 
 
 
@@ -59,10 +63,10 @@ function getTrialSpaceElement(TestSpace)
     return Uh
 end
 
-testspaces = [getTestSpaces(model[1], 1), getTestSpaces(model[2], 2), getTestSpaces(model[3], 3), getTestSpaces(model[4], 4)]
-trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2]), getTrialSpaceElement(testspaces[3]), getTrialSpaceElement(testspaces[4])]
+testspaces = [getTestSpaces(model, 2), getTestSpaces(hrefinedModel, 2)]
+trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2])]
 
-numSpaces = [1,2,3,4]
+numSpaces = [1,2]
 function GenMultipleSpaces(model, numSpaces)
     for poly in numSpaces
         #finite element definition
@@ -325,13 +329,13 @@ for i in numSpaces
         errvalsDiff = errorRefine[1] .- errorRefine[i]
         L2Diff = refinementL2[1] .- refinementL2[i]
         H1Diff = refinementH1[1] .- errvecsH1[i]
-        plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
-        plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
-        plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
+        plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs fine)")
+        plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff coarse vs fine")
+        plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff coarse vs fine" )
         
-        plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
-        plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
-        plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
+        plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs fine)")
+        plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff coarse vs fine")
+        plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff coarse vs fine")
 
     end
 
@@ -357,18 +361,18 @@ end
 
 eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
 for i in numSpaces
-    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
+    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (h=$(i))")
+    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (h=$(i))")
+    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (h=$(i))")
 end
 png(eigErrorPlot, "ErrorsLog_P_refinement.png")
 
 
 eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
 for i in numSpaces
-    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
+    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (h=$(i))")
+    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (h=$(i))")
+    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(h=$(i))")
 end 
 png(eigErrorPlot2, "Errors_P_Refinement.png")
 
@@ -377,10 +381,10 @@ png(eigErrorPlot2, "Errors_P_Refinement.png")
 
 for i in numSpaces
     eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
-    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
-    png(eigErrorPlot, "ErrorsLog_P_refinement=$(i).png")
+    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (h=$(i))")
+    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (h=$(i))")
+    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (h=$(i))")
+    png(eigErrorPlot, "ErrorsLog_H_refinement=$(i).png")
 end
 
 
@@ -388,10 +392,10 @@ end
 
 for i in numSpaces
     eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
-    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
-    png(eigErrorPlot2, "Errors_P_Refinement=$(i).png")
+    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (h=$(i))")
+    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (h=$(i))")
+    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(h=$(i))")
+    png(eigErrorPlot2, "Errors_H_Refinement=$(i).png")
 end 
 
 
@@ -413,10 +417,10 @@ display(refinementH1)
     #     plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
 
 # export plots to pngs
-png(eigErrorPlot, "ErrorsLog.png")
-png(eigErrorPlot2, "ErrorsCoarse.png")
-png(diffPlot1, "diffplot1.png")
-png(diffPlot2, "diffplot2.png")
+png(eigErrorPlot, "h-ErrorsLog.png")
+png(eigErrorPlot2, "h-ErrorsCoarse.png")
+png(diffPlot1, "h-diffplot1.png")
+png(diffPlot2, "h-diffplot2.png")
 
 SlepcFinalize()
 
