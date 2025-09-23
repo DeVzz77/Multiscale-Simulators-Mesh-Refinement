@@ -1,0 +1,4 @@
+To run code, requires PETSC and SLEPC installation
+PETSC and SLEPC require make, python3, C and MPICH installed locally
+Also requires julia packages petscwrap, slepcwrap and MPI
+

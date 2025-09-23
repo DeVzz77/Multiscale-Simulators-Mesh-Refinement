@@ -5,15 +5,19 @@ using Plots
 using PetscWrap
 using SlepcWrap
 using SparseArrays
-
+using Profile 
 
 
 
 #____UPDATED EIGENVALUE P MESH REFINEMENT APPLICATION using PETSC/Slepc in 2d
 #adapting PoissonEigen.jl
-# TODO: verify that improving the space of refinement does not change coarse eigenvalue problem
-# TODO: post process eigenpairs for each P - give them as initial guesses for slepc
-# TODO: compare compute times with and without initial guesses
+# TO DO: verify that improving the space of refinement does not change coarse eigenvalue problem
+# TO DO: post process eigenpairs for each P - give them as initial guesses for slepc
+# TO DO: compare compute times with and without initial guesses
+
+
+
+# TIMING could use Julia's Profiler?
 
 D = 1
 
@@ -24,15 +28,13 @@ sc = 1/sqrt(bound/2)
 domain = (0,bound, 0,bound)
 
 #must be a better way to do this 
-polyDegree = [1,2,3,4]
-numElements = [Int(NumDegreesofFreedom/polyDegree[1]), Int(NumDegreesofFreedom/polyDegree[2]), Int(NumDegreesofFreedom/polyDegree[3]), Int(NumDegreesofFreedom/polyDegree[4])]
+polyDegree = 1
+numElements = Int(NumDegreesofFreedom/polyDegree)
+model = CartesianDiscreteModel(domain, numElements)
+cell_coords = get_cell_coordinates(model)
 
-
-model = [CartesianDiscreteModel(domain, numElements[1]), CartesianDiscreteModel(domain, numElements[2]), CartesianDiscreteModel(domain, numElements[3]), CartesianDiscreteModel(domain, numElements[4])]
-cell_coords = [get_cell_coordinates(model[1]), get_cell_coordinates(model[2]), get_cell_coordinates(model[3]), get_cell_coordinates(model[4])]
-
-Ω = [Triangulation(model[1]),Triangulation(model[2]),Triangulation(model[3]),Triangulation(model[4])]
-dΩ = [Measure(Ω[1], 2*polyDegree[1] + 2), Measure(Ω[2], 2*polyDegree[2] + 2), Measure(Ω[3], 2*polyDegree[3] + 2), Measure(Ω[4], 2*polyDegree[4] + 2)]
+Ω = Triangulation(model)
+dΩ = Measure(Ω, 2*polyDegree + 2)
 
 
 
@@ -64,8 +66,10 @@ function getTrialSpaceElement(TestSpace)
     return Uh
 end
 
-testspaces = [getTestSpaces(model[1], 1), getTestSpaces(model[2], 2), getTestSpaces(model[3], 3), getTestSpaces(model[4], 4)]
-trialspaces = [getTrialSpaceElement(testspaces[1]), getTrialSpaceElement(testspaces[2]), getTrialSpaceElement(testspaces[3]), getTrialSpaceElement(testspaces[4])]
+# testspaces = getTestSpaces(model, 1)
+# trialspaces = getTrialSpaceElement(testspaces)
+
+Vh, Uh = GenSpacesWithPRefinement(model, 1)
 
 numSpaces = [1,2,3,4]
 function GenMultipleSpaces(model, numSpaces)
@@ -104,11 +108,11 @@ fineP = 3
 
 
 # GenMultipleSpaces(model, numSpaces)
-Vh = MultiFieldFESpace(testspaces)
-Uh = MultiFieldFESpace(trialspaces)
+# Vh = MultiFieldFESpace(testspaces)
+# Uh = MultiFieldFESpace(trialspaces)
 
-display(Vh[2])
-display(Vh)
+# display(Vh[2])
+# display(Vh)
 
 # display(testList)
 # display(trialList)
@@ -137,19 +141,19 @@ errorCoarse = Vector{Vector{Float64}}()
 errvecsL2Coarse = Vector{Vector{Float64}}()
 errvecsH1Coarse = Vector{Vector{Float64}}()
 
-diffPlot1 = plot(xscale = :log10, yscale = :log10)
-diffPlot2 = plot()
+# diffPlot1 = plot(xscale = :log10, yscale = :log10)
+# diffPlot2 = plot()
 
 #provide solutions and calculate errors for each defined space
-for i in numSpaces
+#for i in numSpaces
     #Bilinear form of stiffness matrix
-    a(u,v) = ∫(∇(u)⋅∇(v))dΩ[i]
+    a(u,v) = ∫(∇(u)⋅∇(v))dΩ
     # #Bilinear form of mass matrix
-    m(u,v) = ∫(u*v)dΩ[i]
+    m(u,v) = ∫(u*v)dΩ
 
 
-    A = assemble_matrix(a, Uh[i], Vh[i])
-    M = assemble_matrix(m, Uh[i], Vh[i])
+    A = assemble_matrix(a, Uh, Vh)
+    M = assemble_matrix(m, Uh, Vh)
     display(A)
     display(M)
 
@@ -207,7 +211,8 @@ for i in numSpaces
     EPSSetFromOptions(eps)
     EPSSetUp(eps)
 
-    EPSSolve(eps)
+    @profile EPSSolve(eps)
+    Profile.print()
     EPSView(eps)
 
     nconv = EPSGetConverged(eps)
@@ -258,23 +263,23 @@ for i in numSpaces
     
         #println("EIGENVEC")
         #display(eigenvec)
-        evh = FEFunction(Vh[1], eigenvec) 
+        evh = FEFunction(Vh, eigenvec) 
         # println("evh")
         # println(evh)
-        ev_exact(x) = sc*sin(l*x[1])  # Exact eigenfunction
+        ev_exact(x) = sc*sin(l*x)  # Exact eigenfunction
         # println("EV_EXACT(X)")
         # println(ev_exact(l))
-        sn=sum(integ(ev_exact,evh,dΩ[1]))
+        sn=sum(integ(ev_exact,evh,dΩ))
         # println("SN")
         # println(sn)
         error = ev_exact - evh*sign(sn) # Compute the error
         # display(error)
-        errvecsL2[l] = sum(L2Norm(error,dΩ[1]))
-        errvecsH1[l] = sum(ENorm(error,dΩ[1]))/evals[l] # Normalize by the eigenvalue
+        errvecsL2[l] = sum(L2Norm(error,dΩ))
+        errvecsH1[l] = sum(ENorm(error,dΩ))/evals[l] # Normalize by the eigenvalue
 
 
         # write to vtk
-        name = "Eigenvector$(D)D$(l)_MeshRefinementP"
+        # name = "Eigenvector$(D)D$(l)_MeshRefinementP"
         # writevtk(
         #       Ω[1],name,append=true,
         #         cellfields = [
@@ -287,64 +292,72 @@ for i in numSpaces
     end
 
 
+
+
+    # POST PROCESSING 
+
+
+
+
+
     # Plotting the errors in eigenvalues and eigenvectors
     errvals = abs.(eigenValues - evals)./evals
-    push!(errorRefine,errvals)
-    push!(refinementL2,errvecsL2)
-    push!(refinementH1,errvecsH1)
-    #display(errvals)
+    # push!(errorRefine,errvals)
+    # push!(refinementL2,errvecsL2)
+    # push!(refinementH1,errvecsH1)
+    # #display(errvals)
 
 
 
 
-    if i == 1 
-        push!(errorCoarse, errvals)
-        display(errorCoarse)
-        push!(errvecsL2Coarse, errvecsL2)
-        push!(errvecsH1Coarse, errvecsH1)
-                #Store errors for each refinement
-        push!(errorRefine,errvals)
-        push!(refinementL2,errvecsL2)
-        push!(refinementH1,errvecsH1)
+    # if i == 1 
+    #     push!(errorCoarse, errvals)
+    #     display(errorCoarse)
+    #     push!(errvecsL2Coarse, errvecsL2)
+    #     push!(errvecsH1Coarse, errvecsH1)
+    #             #Store errors for each refinement
+    #     push!(errorRefine,errvals)
+    #     push!(refinementL2,errvecsL2)
+    #     push!(refinementH1,errvecsH1)
 
-        eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
-        plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
-        plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
-        plot!(eigErrorPlot; legend=:bottomright)
+    #     eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
+    #     plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
+    #     plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
+    #     plot!(eigErrorPlot; legend=:bottomright)
 
-        eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
-        plot!(errvecsL2, label="Eigenvector error (L2 norm)")
-        plot!(errvecsH1, label="Eigenvector error (H1 norm)")
+    #     eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
+    #     plot!(errvecsL2, label="Eigenvector error (L2 norm)")
+    #     plot!(errvecsH1, label="Eigenvector error (H1 norm)")
         
 
 
 
-    else
-        #Store errors for each refinement
-        push!(errorRefine,errvals)
-        push!(refinementL2,errvecsL2)
-        push!(refinementH1,errvecsH1)
+    # else
+    #     #Store errors for each refinement
+    #     push!(errorRefine,errvals)
+    #     push!(refinementL2,errvecsL2)
+    #     push!(refinementH1,errvecsH1)
 
-        display(errorRefine[1])
+    #     display(errorRefine[1])
 
-        errvalsDiff = errorRefine[1] .- errorRefine[i]
-        L2Diff = refinementL2[1] .- refinementL2[i]
-        H1Diff = refinementH1[1] .- errvecsH1[i]
-        plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
-        plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
-        plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
+    #     errvalsDiff = errorRefine[1] .- errorRefine[i]
+    #     L2Diff = refinementL2[1] .- refinementL2[i]
+    #     H1Diff = refinementH1[1] .- errvecsH1[i]
+    #     plot!(diffPlot1, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+    #     plot!(diffPlot1, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+    #     plot!(diffPlot1, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)" )
         
-        plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
-        plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
-        plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
+    #     plot!(diffPlot2, errvalsDiff, label= "Eigenvalue Error Difference (Coarse (1) vs Refinement p degree $(i))")
+    #     plot!(diffPlot2, L2Diff, label="Eigenvec error (L2 norm) Diff p = 1 vs $(i)")
+    #     plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
 
-    end
+    # end
 
     
-    println("errvecsL2")
-    display(errvecsL2)
-    println("errvecsH1")
-    display(errvecsH1)
+    # println("errvecsL2")
+    # display(errvecsL2)
+    # println("errvecsH1")
+    # display(errvecsH1)
 
     #Clean up, free memory
     MatDestroy(petA)
@@ -355,56 +368,56 @@ for i in numSpaces
 
 # println("errvals")
 # println(errvals)
-end 
+#end 
 
 
 #Plot all errorvals and errorvecs on same graphs
 
-eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
-for i in numSpaces
-    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
-end
-png(eigErrorPlot, "ErrorsLog_P_refinement.png")
+# eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
+# for i in numSpaces
+#     plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
+#     plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+#     plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
+# end
+# png(eigErrorPlot, "ErrorsLog_P_refinement.png")
 
 
-eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
-for i in numSpaces
-    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
-end 
-png(eigErrorPlot2, "Errors_P_Refinement.png")
+# eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
+# for i in numSpaces
+#     plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
+#     plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+#     plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
+# end 
+# png(eigErrorPlot2, "Errors_P_Refinement.png")
 
 
-#Plot on different graphs
+# #Plot on different graphs
 
-for i in numSpaces
-    eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
-    plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
-    png(eigErrorPlot, "ErrorsLog_P_refinement=$(i).png")
-end
-
-
-
-
-for i in numSpaces
-    eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
-    plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
-    plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
-    plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
-    png(eigErrorPlot2, "Errors_P_Refinement=$(i).png")
-end 
+# for i in numSpaces
+#     eigErrorPlot = plot(xscale = :log10, yscale = :log10, legend=:bottomright, legendfontsize=:4)
+#     plot!(eigErrorPlot, errorRefine[i],label="Eigenvalue error (p=$(i))")
+#     plot!(eigErrorPlot, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+#     plot!(eigErrorPlot, refinementH1[i], label="Eigenvector error (H1 norm) (p=$(i))")
+#     png(eigErrorPlot, "ErrorsLog_P_refinement=$(i).png")
+# end
 
 
 
 
-display(errorRefine)
-display(refinementL2)
-display(refinementH1)
+# for i in numSpaces
+#     eigErrorPlot2 = plot(legend=:topright, legendfontsize=:4)
+#     plot!(eigErrorPlot2, errorRefine[i], label="Eigenvalue error (p=$(i))")
+#     plot!(eigErrorPlot2, refinementL2[i], label="Eigenvector error (L2 norm) (p=$(i))")
+#     plot!(eigErrorPlot2, refinementH1[i], label="Eigenvector error (H1 norm)(p=$(i))")
+#     png(eigErrorPlot2, "Errors_P_Refinement=$(i).png")
+# end 
+
+
+
+
+# display(errorRefine)
+# display(refinementL2)
+# display(refinementH1)
 
     #     errvalsDiff = errorRefine[1] - errvals
     #     L2Diff = refinementL2[1] - errvecsL2
@@ -418,10 +431,10 @@ display(refinementH1)
     #     plot!(diffPlot2, H1Diff, label="Eigenvec error (H1 norm) Diff p = 1 vs $(i)")
 
 # export plots to pngs
-png(eigErrorPlot, "ErrorsLog.png")
-png(eigErrorPlot2, "ErrorsCoarse.png")
-png(diffPlot1, "diffplot1.png")
-png(diffPlot2, "diffplot2.png")
+# png(eigErrorPlot, "ErrorsLog.png")
+# png(eigErrorPlot2, "ErrorsCoarse.png")
+# png(diffPlot1, "diffplot1.png")
+# png(diffPlot2, "diffplot2.png")
 
 SlepcFinalize()
 
