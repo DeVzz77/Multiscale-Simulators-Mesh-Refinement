@@ -9,9 +9,12 @@ using SparseArrays
 
 
 
-#____UPDATED EIGENVALUE MESH REFINEMENT APPLICATION using PETSC/Slepc
+#____UPDATED EIGENVALUE P MESH REFINEMENT APPLICATION using PETSC/Slepc in 2d
 #adapting PoissonEigen.jl
-# UPDATE: INITIAL METHOD INCORRECT, Adapted solution in 2dMeshRefinement.jl
+# TODO: verify that improving the space of refinement does not change coarse eigenvalue problem
+# TODO: post process eigenpairs for each P - give them as initial guesses for slepc
+# TODO: compare compute times with and without initial guesses
+
 D = 1
 
 NumDegreesofFreedom = 300
