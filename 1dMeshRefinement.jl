@@ -150,6 +150,8 @@ for i in numSpaces
     display(A)
     display(M)
 
+    B = assemble_matrix(a, Uh[i], Vh[i+1])
+    Mab = assemble_matrix()
 
 
 # op_a=AffineFEOperator(a,Uh[1],Vh[1]) # Generates the FE operator, holds the linear system (stiffness matrix)

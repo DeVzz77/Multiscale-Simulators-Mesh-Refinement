@@ -14,13 +14,13 @@ SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian
 # -eps_problem_type ghep -st_type sinvert
 D = 1 
 NumDegreesofFreedom = 300
-polyDegree = 4
+polyDegree = 2
 numElements = Int(NumDegreesofFreedom/polyDegree) 
 bound = pi
 
 sc = 1/sqrt(bound/2)
 
-Nplot = 4
+Nplot = 100
 
 domain = (0,bound)
 
@@ -201,6 +201,10 @@ eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
 plot!(errvecsL2, label="Eigenvector error (L2 norm)")
 plot!(errvecsH1, label="Eigenvector error (H1 norm)")
 png(eigErrorPlot2, "plot2.png")
+
+
+
+
 
  
 #Clean up, free memory

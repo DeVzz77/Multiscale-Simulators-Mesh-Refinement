@@ -49,7 +49,9 @@ display(M)
 
 Nev = Int(floor(length(A[:,1])/2)*2) # Number of eigenvalues to compute
 Λ, eV = eigs(A, M, nev = Nev, which = :SM)  # SM = smallest magnitude 
+display("Eigenvalues")
 display(Λ)
+display("Eigenvectors")
 display(eV)
 # println("num eigenvalues")
 # println(Nev)
