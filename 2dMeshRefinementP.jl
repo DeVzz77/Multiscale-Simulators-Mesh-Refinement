@@ -222,10 +222,10 @@ polyDegree = 2
 
 
 #finite element definition
-reffe = ReferenceFE(lagrangian, Float64, polyDegree)
+reffe_refined = ReferenceFE(lagrangian, Float64, polyDegree)
 
 #Test Space
-VhRefined = FESpace(model,reffe,dirichlet_tags="boundary")
+VhRefined = FESpace(model,reffe_refined,dirichlet_tags="boundary")
 #Trial Space
 UhRefined = TrialFESpace(VhRefined, 0)
 
@@ -248,7 +248,7 @@ Mref = assemble_matrix(mref, UhRefined, VhRefined)
 bpost(u,v) = ∫(∇(u)⋅∇(v))dΩ
 mpost(u,v) = ∫(u*v)dΩ
 
-Bpost = assemble_matrix(bpost, UhRefined, VhCoarse)
+Bpost = assemble_matrix(bpost,UhRefined, VhCoarse) 
 Mpost = assemble_matrix(mpost, UhRefined, VhCoarse)
 
 # op_b_post=AffineFEOperator(bpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (stiffness matrix)
@@ -259,7 +259,7 @@ Mpost = assemble_matrix(mpost, UhRefined, VhCoarse)
 
 #error after refinement
 
-errorRefined = Vector{Float64}()
+errorRefined = Vector{Vector{Float64}}()
 
 println("typeof(Bref) = ", typeof(Bref), ", size(Bref) = ", size(Bref))
 println("typeof(Mpost) = ", typeof(Mpost), ", size(Mpost) = ", size(Mpost))
@@ -273,11 +273,40 @@ for ieig in 0:nconv-1
     eigenvec = vec2array(vecpr)
     
     println("typeof(eigenvec) = ", typeof(eigenvec), ", size(eigenvec) = ", size(eigenvec))
-    ei = Bref' * ((vpr[i]*Mpost - Bpost) * (Bref * eigenvec[i] ))
+    ei = (Bref' * (((vpr[i]*Mpost) - Bpost))) * eigenvec[:,i]
+    show(ei)
     
-    pop!(errorRefined, ei)
+    push!(errorRefined, ei)
 end
 
+
+#extra
+#to approximate eigenfunction better
+
+Vi = Vector{Vector{Float64}}()
+for ieig in 0: nconv - 1
+    i = ieig + 1
+    vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
+    eigenvec = vec2array(vecpr)
+
+    vi = vpr * Bpost' * Mpost * eigenvec[i]
+
+    show(vi)
+    push!(Vi, vi)
+end
+
+#to approximate eigenvalues better
+Mi = Vector{Vector{Float64}}()
+for ieig in 0: nconv - 1
+    i = ieig + 1
+    vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
+    eigenvec = vec2array(vecpr)
+
+    mi = (v[i] * Bref *v[i] ) / ( v[i] * Mref * v[i])
+    show(mi)
+    push!(Mi, mi)
+
+end 
 
 
 display(errorRefined) 
