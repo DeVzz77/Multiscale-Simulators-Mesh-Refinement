@@ -248,8 +248,8 @@ Mref = assemble_matrix(mref, UhRefined, VhRefined)
 bpost(u,v) = ∫(∇(u)⋅∇(v))dΩ
 mpost(u,v) = ∫(u*v)dΩ
 
-Bpost = assemble_matrix(bpost,UhRefined, VhCoarse) 
-Mpost = assemble_matrix(mpost, UhRefined, VhCoarse)
+Bpost = assemble_matrix(bpost, VhCoarse, UhRefined ) 
+Mpost = assemble_matrix(mpost, VhCoarse,UhRefined )
 
 # op_b_post=AffineFEOperator(bpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (stiffness matrix)
 # op_m_post=AffineFEOperator(mpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (mass matrix)
@@ -268,12 +268,12 @@ println("typeof(Bpost) = ", typeof(Bpost), ", size(Bpost) = ", size(Bpost))
 
 
 for ieig in 0:nconv-1
-    i = ieig + 1
+    i = ieig +1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
     eigenvec = vec2array(vecpr)
     
     println("typeof(eigenvec) = ", typeof(eigenvec), ", size(eigenvec) = ", size(eigenvec))
-    ei = (Bref' * (((vpr[i]*Mpost) - Bpost))) * eigenvec[:,i]
+    ei = (Bref' * (((vpr*Mpost) - Bpost))) * eigenvec
     show(ei)
     
     push!(errorRefined, ei)
@@ -289,8 +289,8 @@ for ieig in 0: nconv - 1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
     eigenvec = vec2array(vecpr)
 
-    vi = vpr * Bpost' * Mpost * eigenvec[i]
-
+    vi = vpr * Bpost' * Mpost * eigenvec
+    println("VI")
     show(vi)
     push!(Vi, vi)
 end
@@ -300,9 +300,10 @@ Mi = Vector{Vector{Float64}}()
 for ieig in 0: nconv - 1
     i = ieig + 1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
-    eigenvec = vec2array(vecpr)
+     
 
-    mi = (v[i] * Bref *v[i] ) / ( v[i] * Mref * v[i])
+    mi = (Vi[i] * Bref *Vi[i] ) / ( Vi[i] * Mref * Vi[i])
+    println("MI")
     show(mi)
     push!(Mi, mi)
 
