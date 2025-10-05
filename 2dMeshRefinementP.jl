@@ -5,7 +5,7 @@ using Plots
 using PetscWrap
 using SlepcWrap
 using SparseArrays
-using Profile 
+using BenchmarkTools
 
 
 
@@ -22,7 +22,7 @@ using Profile
 SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian ")
 # -eps_problem_type ghep -st_type sinvert
 D = 1 
-NumDegreesofFreedom = 100
+NumDegreesofFreedom = 5
 polyDegree = 1
 numElements = Int(NumDegreesofFreedom/polyDegree) 
 bound = pi
@@ -58,8 +58,10 @@ m(u,v) = ∫(u*v)dΩ
 
 A = assemble_matrix(a, UhCoarse, VhCoarse)
 M = assemble_matrix(m, UhCoarse, VhCoarse)
-#display(A)
-#display(M)
+println("A")
+display(A)
+println("M")
+display(M)
 
 
 
@@ -109,8 +111,12 @@ EPSSetOperators(eps, petA, petM)
 EPSSetWhichEigenpairs(eps, EPS_SMALLEST_MAGNITUDE)
 EPSSetFromOptions(eps)
 EPSSetUp(eps)
+# to time initial solve without guesses
+@btime begin 
 
-EPSSolve(eps)
+    EPSSolve(eps)
+end
+
 EPSView(eps)
 
 nconv = EPSGetConverged(eps)
@@ -170,9 +176,11 @@ for ieig in 0:nconv-1
     eigenvec = vec2array(vecpr)
     # println("L VALUE")
     # println(l)
+    println("EIGENVALUE")
+    display(vpr)
   
-    #println("EIGENVEC")
-    #display(eigenvec)
+    println("EIGENVEC")
+    display(eigenvec)
     evh = FEFunction(VhCoarse, eigenvec) 
     # println("evh")
     # println(evh)
@@ -183,7 +191,9 @@ for ieig in 0:nconv-1
     # println("SN")
     # println(sn)
     error = ev_exact - evh*sign(sn) # Compute the error
-    # display(error)
+    #println(error) 
+     display(error)
+    show(error)
     errvecsL2[l] = sum(L2Norm(error,dΩ))
     errvecsH1[l] = sum(ENorm(error,dΩ))/evals[l] # Normalize by the eigenvalue
 
@@ -239,6 +249,22 @@ mref(u,v) = ∫(u*v)dΩ
 Bref = assemble_matrix(bref, UhRefined, VhRefined)
 Mref = assemble_matrix(mref, UhRefined, VhRefined)
 
+# evh = FEFunction(VhCoarse, eigenvec) 
+# euh = FEFunction(UhCoarse, eigenvec)
+
+# evhref = FEFunction(VhRefined, eigenvec) 
+# euhref = FEFunction(UhRefined, eigenvec)
+
+# println("evh")
+# show(evh)
+# println("euh")
+# show(euh)
+
+# println("evhref")
+# show(evhref)
+# println("euhref")
+# show(euhref)
+
 # op_b=AffineFEOperator(bref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (stiffness matrix)
 # op_m=AffineFEOperator(mref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (mass matrix)
 # Bref = op_a.op.matrix # Defines stiffness matrix
@@ -248,8 +274,8 @@ Mref = assemble_matrix(mref, UhRefined, VhRefined)
 bpost(u,v) = ∫(∇(u)⋅∇(v))dΩ
 mpost(u,v) = ∫(u*v)dΩ
 
-Bpost = assemble_matrix(bpost, VhCoarse, UhRefined ) 
-Mpost = assemble_matrix(mpost, VhCoarse,UhRefined )
+Bpost = assemble_matrix(bpost, UhCoarse, VhRefined ) 
+Mpost = assemble_matrix(mpost, UhCoarse, VhRefined )
 
 # op_b_post=AffineFEOperator(bpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (stiffness matrix)
 # op_m_post=AffineFEOperator(mpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (mass matrix)
@@ -290,19 +316,22 @@ for ieig in 0: nconv - 1
     eigenvec = vec2array(vecpr)
 
     vi = vpr * Bpost' * Mpost * eigenvec
-    println("VI")
+    print("V")
+    println(i)
     show(vi)
     push!(Vi, vi)
 end
 
+println("typeof(VI) = ", typeof(Vi), ", size(VI) = ", size(Vi))
+
 #to approximate eigenvalues better
-Mi = Vector{Vector{Float64}}()
+Mi = Vector{Float64}()
 for ieig in 0: nconv - 1
     i = ieig + 1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
      
-
-    mi = (Vi[i] * Bref *Vi[i] ) / ( Vi[i] * Mref * Vi[i])
+    #dimension mismatch error for B and M
+    mi = dot(Vi[i], Bref * Vi[i]) / dot(Vi[i], Mref * Vi[i])
     println("MI")
     show(mi)
     push!(Mi, mi)
@@ -310,7 +339,7 @@ for ieig in 0: nconv - 1
 end 
 
 
-display(errorRefined) 
+#display(errorRefined) 
 
 #Clean up, free memory
 MatDestroy(petA)
