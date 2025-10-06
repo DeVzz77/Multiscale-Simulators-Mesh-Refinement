@@ -11,18 +11,20 @@ using BenchmarkTools
 
 #____UPDATED EIGENVALUE P MESH REFINEMENT APPLICATION using PETSC/Slepc in 2d
 #adapting PoissonEigen.jl
-# TO DO: verify that improving the space of refinement does not change coarse eigenvalue problem
-# TO DO: post process eigenpairs for each P - give them as initial guesses for slepc
-# TO DO: compare compute times with and without initial guesses
-# TIMING could use Julia's Profiler?
+# TO DO: verify that improving the space of refinement does not change coarse eigenvalue problem : COMPLETE
+# TO DO: post process eigenpairs for each P - give them as initial guesses for slepc : Somewhat complete - > errors
+# TO DO: compare compute times with and without initial guesses 
+# TIMING could use Julia's Profiler? - Julia profiler does not work to time SLEP solve (segmentation fault)
+# using BenchmarkTools instead
+# TO DO: find way to parse Mi and Vi to slepc for solve with guesses -> EPSsetInitialGuess(), need to verify if slepcwrap has this functionality too
 
 
 # initialise SLEPC
 
 SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian ")
 # -eps_problem_type ghep -st_type sinvert
-D = 1 
-NumDegreesofFreedom = 5
+D = 2
+NumDegreesofFreedom = 100
 polyDegree = 1
 numElements = Int(NumDegreesofFreedom/polyDegree) 
 bound = pi
@@ -192,8 +194,8 @@ for ieig in 0:nconv-1
     # println(sn)
     error = ev_exact - evh*sign(sn) # Compute the error
     #println(error) 
-     display(error)
-    show(error)
+    #  display(error)
+    # show(error)
     errvecsL2[l] = sum(L2Norm(error,dΩ))
     errvecsH1[l] = sum(ENorm(error,dΩ))/evals[l] # Normalize by the eigenvalue
 
@@ -222,23 +224,19 @@ plot!(errvecsH1, label="Eigenvector error (H1 norm)")
 png(eigErrorPlot2, "plot2.png")
 
  
-# Post processing 
-
-#refined solution
-polyDegree = 2
 # modelRefined = CartesianDiscreteModel(domain,numElements)
 # cell_coords = get_cell_coordinates(modelRefined)
 
 
-
+# Post processing 
+#refined solution
+polyDegree = 2
 #finite element definition
 reffe_refined = ReferenceFE(lagrangian, Float64, polyDegree)
-
 #Test Space
 VhRefined = FESpace(model,reffe_refined,dirichlet_tags="boundary")
 #Trial Space
 UhRefined = TrialFESpace(VhRefined, 0)
-
 
 
 #Bilinear form of stiffness matrix
@@ -246,59 +244,36 @@ bref(u,v) = ∫(∇(u)⋅∇(v))dΩ
 #Bilinear form of mass matrix
 mref(u,v) = ∫(u*v)dΩ
 
+# For dof = 100, Bref size 200x200 Mref size 200x200
 Bref = assemble_matrix(bref, UhRefined, VhRefined)
 Mref = assemble_matrix(mref, UhRefined, VhRefined)
-
-# evh = FEFunction(VhCoarse, eigenvec) 
-# euh = FEFunction(UhCoarse, eigenvec)
-
-# evhref = FEFunction(VhRefined, eigenvec) 
-# euhref = FEFunction(UhRefined, eigenvec)
-
-# println("evh")
-# show(evh)
-# println("euh")
-# show(euh)
-
-# println("evhref")
-# show(evhref)
-# println("euhref")
-# show(euhref)
-
-# op_b=AffineFEOperator(bref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (stiffness matrix)
-# op_m=AffineFEOperator(mref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (mass matrix)
-# Bref = op_a.op.matrix # Defines stiffness matrix
-# Mref = op_m.op.matrix # Defines mass matrix
 
 
 bpost(u,v) = ∫(∇(u)⋅∇(v))dΩ
 mpost(u,v) = ∫(u*v)dΩ
 
-Bpost = assemble_matrix(bpost, UhCoarse, VhRefined ) 
-Mpost = assemble_matrix(mpost, UhCoarse, VhRefined )
+# should be UhRefined , VhCoarse ? Dimension mismatch error so swapped
+# sizes should be Bpost size 200x100 Mpost size 200x100
+# Swapped Bpost size 200x100 Mpost size 200x100
+Bpost = assemble_matrix(bpost, VhCoarse, UhRefined ) 
+Mpost = assemble_matrix(mpost, VhCoarse, UhRefined )
 
-# op_b_post=AffineFEOperator(bpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (stiffness matrix)
-# op_m_post=AffineFEOperator(mpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (mass matrix)
-# Bpost = op_a.op.matrix # Defines stiffness matrix
-# Mpost = op_m.op.matrix # Defines mass matrix
 
+println("Bref type = ", typeof(Bref), ", size = ", size(Bref))
+println("Mpost type = ", typeof(Mpost), ", size = ", size(Mpost))
+println("Bpost type = ", typeof(Bpost), ", size = ", size(Bpost))
 
 #error after refinement
-
 errorRefined = Vector{Vector{Float64}}()
 
-println("typeof(Bref) = ", typeof(Bref), ", size(Bref) = ", size(Bref))
-println("typeof(Mpost) = ", typeof(Mpost), ", size(Mpost) = ", size(Mpost))
-println("typeof(Bpost) = ", typeof(Bpost), ", size(Bpost) = ", size(Bpost))
-
-
-
+#iterates over each eigenpair, stores values in errorRefined
 for ieig in 0:nconv-1
     i = ieig +1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
     eigenvec = vec2array(vecpr)
     
     println("typeof(eigenvec) = ", typeof(eigenvec), ", size(eigenvec) = ", size(eigenvec))
+    # Bref'(size) 200x200  * (200x100) - (200x100) * 100 
     ei = (Bref' * (((vpr*Mpost) - Bpost))) * eigenvec
     show(ei)
     
@@ -307,14 +282,14 @@ end
 
 
 #extra
-#to approximate eigenfunction better
-
+#to approximate eigenfunctions better
 Vi = Vector{Vector{Float64}}()
 for ieig in 0: nconv - 1
     i = ieig + 1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
     eigenvec = vec2array(vecpr)
-
+       #     1 x   100x200 200x100 x100
+       #vector of length 100
     vi = vpr * Bpost' * Mpost * eigenvec
     print("V")
     println(i)
@@ -322,8 +297,9 @@ for ieig in 0: nconv - 1
     push!(Vi, vi)
 end
 
-println("typeof(VI) = ", typeof(Vi), ", size(VI) = ", size(Vi))
+println("VI type = ", typeof(Vi), ", size = ", size(Vi))
 
+println(Vi[2])
 #to approximate eigenvalues better
 Mi = Vector{Float64}()
 for ieig in 0: nconv - 1
@@ -331,6 +307,7 @@ for ieig in 0: nconv - 1
     vpr, vpi, vecpr, vecpi = EPSGetEigenpair(eps,ieig,vecr, veci)
      
     #dimension mismatch error for B and M
+    
     mi = dot(Vi[i], Bref * Vi[i]) / dot(Vi[i], Mref * Vi[i])
     println("MI")
     show(mi)
@@ -346,3 +323,15 @@ MatDestroy(petA)
 MatDestroy(petM)
 EPSDestroy(eps)
 SlepcFinalize()
+
+
+# potential alternative to assemble the matrices
+# op_b=AffineFEOperator(bref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (stiffness matrix)
+# op_m=AffineFEOperator(mref,UhRefined,VhRefined) # Generates the FE operator, holds the linear system (mass matrix)
+# Bref = op_a.op.matrix # Defines stiffness matrix
+# Mref = op_m.op.matrix # Defines mass matrix
+
+# op_b_post=AffineFEOperator(bpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (stiffness matrix)
+# op_m_post=AffineFEOperator(mpost,UhRefined,VhCoarse) # Generates the FE operator, holds the linear system (mass matrix)
+# Bpost = op_a.op.matrix # Defines stiffness matrix
+# Mpost = op_m.op.matrix # Defines mass matrix
