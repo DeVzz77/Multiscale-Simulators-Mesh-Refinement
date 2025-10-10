@@ -5,6 +5,7 @@ using Plots
 using PetscWrap
 using SlepcWrap
 using SparseArrays
+using BenchmarkTools
 #____UPDATED EIGENVALUE MESH REFINEMENT APPLICATION using PETSC/Slepc
 #adapting PoissonEigen.jl
 
@@ -13,16 +14,16 @@ using SparseArrays
 SlepcInitialize("-eps_target 0 -eps_nev 300 -eps_type arnoldi -eps_gen_hermitian ")
 # -eps_problem_type ghep -st_type sinvert
 D = 1 
-NumDegreesofFreedom = 300
+NumDegreesofFreedom = 100
 polyDegree = 2
-numElements = Int(NumDegreesofFreedom/polyDegree) 
+numElements = 100#Int(NumDegreesofFreedom/polyDegree) 
 bound = pi
 
 sc = 1/sqrt(bound/2)
 
 Nplot = 100
 
-domain = (0,bound)
+domain = (0,bound) # for 2d solution domain = (0,bound, 0,bound)
 
 model = CartesianDiscreteModel(domain,numElements)
 cell_coords = get_cell_coordinates(model)
@@ -49,8 +50,8 @@ m(u,v) = ∫(u*v)dΩ
 
 A = assemble_matrix(a, Uh, Vh)
 M = assemble_matrix(m, Uh, Vh)
-#display(A)
-#display(M)
+display(A)
+display(M)
 
 
 
@@ -133,7 +134,7 @@ Nev = nconv
 
 
 evals = (1:Nev) .^ 2
-# println(evals)
+println(evals)
 
 #L2 error norm
 L2Norm(xh,dΩ) = ∫(xh*xh)*dΩ 
@@ -178,6 +179,15 @@ for ieig in 0:nconv-1
     errvecsL2[l] = sum(L2Norm(error,dΩ))
     errvecsH1[l] = sum(ENorm(error,dΩ))/evals[l] # Normalize by the eigenvalue
 
+    name = "Eigenvector$(D)D$(l)"
+    writevtk(
+            Ω,name,append=false,
+            cellfields = [
+            "evh" => evh,                           # Computed solution
+            "evx" => CellField(ev_exact,Ω),        # Exact solution
+            "error" => CellField(error,Ω),          # Exact solution
+            ],
+            )
     
 end
 
@@ -193,14 +203,16 @@ errvals = abs.(eigenValues - evals)./evals
 # println(errvals)
 
 eigErrorPlot = plot(errvals, xscale = :log10, yscale = :log10,label="Eigenvalue error")
+plot!(eigErrorPlot, title="Eigenvalue and Eigenvector Errors for $(D)D Problem, p=$(polyDegree) Number of Elements = $(numElements) (log scale) ", legendfontsize=:2)
 plot!(eigErrorPlot, errvecsL2; label="Eigenvector error (L2 norm)")
 plot!(eigErrorPlot, errvecsH1; label="Eigenvector error (H1 norm)")
 plot!(eigErrorPlot; legend=:bottomright)
-png(eigErrorPlot, "plot1.png")
+png(eigErrorPlot, "plot1_p=$(polyDegree).png")
 eigErrorPlot2 = plot(errvals, label="Eigenvalue error")
 plot!(errvecsL2, label="Eigenvector error (L2 norm)")
 plot!(errvecsH1, label="Eigenvector error (H1 norm)")
-png(eigErrorPlot2, "plot2.png")
+plot!(eigErrorPlot2, title="Eigenvalue and Eigenvector Errors for $(D)D Problem, p=$(polyDegree) Number of Elements = $(numElements)", legendfontsize=:2)
+png(eigErrorPlot2, "plot2_p=$(polyDegree).png")
 
 
 
